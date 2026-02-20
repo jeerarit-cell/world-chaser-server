@@ -261,7 +261,7 @@
         // --- 4.1 IMPORTS (MiniKit Only) ---
         import { MiniKit } from "https://cdn.jsdelivr.net/npm/@worldcoin/minikit-js@latest/+esm";
 
-        const APP_ID = "app_6203a46daf3053d01617ef5293135678";
+        const APP_ID = "app_7957e5b5ad4f59a5a34d23b94cec568f";
         MiniKit.install(APP_ID);
         console.log("MiniKit Installed");
         window.MiniKit = MiniKit; 
