@@ -859,38 +859,34 @@ setInterval(refreshPoolDisplay, 30000);
     if(amount <= 0) return; 
 
     const txt = document.getElementById(who === 'e' ? 'eDmgText' : 'pDmgText'); 
-    
-    // 1. ตั้งค่าเริ่มต้นใหม่ทุกครั้งที่เรียก (Reset)
-    txt.textContent = "-" + amount;
-    txt.style.opacity = 1; // ทำให้มองเห็น
-    playSfx('hit'); 
+    txt.textContent = "-" + amount; 
 
-    // 2. ใช้ GSAP ทำ Animation กระเด้งและลอยขึ้น
-    gsap.fromTo(txt, 
-        { 
-            y: 0,           // เริ่มที่ตำแหน่งเดิม
-            scale: 0.5,     // เริ่มจากตัวเล็กๆ
-            opacity: 0 
-        }, 
-        { 
-            duration: 0.8, 
-            y: -50,         // ลอยขึ้นไปข้างบน 50px
-            scale: 1.5,     // ขยายใหญ่ขึ้นให้ดูตกใจ
-            opacity: 1, 
-            ease: "back.out(2)", // กระเด้งแบบนุ่มนวล
-            onComplete: () => {
-                // พอโชว์เสร็จ ค่อยๆ จางหายไป
-                gsap.to(txt, { 
-                    opacity: 0, 
-                    duration: 0.4, 
-                    delay: 0.5 
-                });
-            }
-        }
-    );
+    // สร้าง Timeline เฉพาะกิจสั้นๆ จะอ่านง่ายกว่า
+    const tl = gsap.timeline();
+
+    // 1. เซตจุดเริ่มต้น (ลดปีกกาไป 1 ชุด)
+    tl.set(txt, { y: 0, scale: 0.5, opacity: 0 });
+
+    // 2. สั่งเด้งขึ้นมา
+    tl.to(txt, { 
+        duration: 0.6, 
+        y: -40, 
+        scale: 1.5, 
+        opacity: 1, 
+        ease: "back.out" 
+    });
+
+    // 3. สั่งจางหายไป (ต่อท้ายได้เลย ไม่ต้องซ้อน onComplete)
+    tl.to(txt, { 
+        duration: 0.4, 
+        opacity: 0, 
+        delay: 0.4 
+    });
+    
+    playSfx('hit'); 
 }
- 
-        document.getElementById('battleArea').classList.add('shaking'); 
+
+         document.getElementById('battleArea').classList.add('shaking'); 
         if(who === 'e') document.querySelector('.boss-banner').classList.add('hit'); 
         setTimeout(() => { 
             txt.classList.remove('show'); 
