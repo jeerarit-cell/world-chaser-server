@@ -261,7 +261,7 @@
         // --- 4.1 IMPORTS (MiniKit Only) ---
         import { MiniKit } from "https://cdn.jsdelivr.net/npm/@worldcoin/minikit-js@latest/+esm";
 
-        const APP_ID = "app_7957e5b5ad4f59a5a34d23b94cec568f";
+        const APP_ID = "app_6203a46daf3053d01617ef5293135678";
         MiniKit.install(APP_ID);
         console.log("MiniKit Installed");
         window.MiniKit = MiniKit; 
@@ -749,144 +749,90 @@ setInterval(refreshPoolDisplay, 30000);
     }
     
     async function runBattleSequence() { 
-    battle_isPlaying = true; 
-    const btnAction = document.getElementById('actionBtn');
-    btnAction.disabled = true; 
-    btnAction.innerText = "⚔️ COMBAT ⚔️";
+        battle_isPlaying = true; 
+        const btnAction = document.getElementById('actionBtn');
+        btnAction.disabled = true; 
+        btnAction.innerText = "⚔️⚔️⚔️⚔️⚔️ ";
 
-    // --- 1. Reset State ก่อนเริ่มรอบใหม่ (จุดที่มักลืม) ---
-    // ลบ class เก่าๆ และ reset filter ของไพ่ทุกใบ
-    gsap.set(['.clash-slot div', '.enemy-card', '.enemy-wrap'], { 
-        clearProps: "all" 
-    });
-    document.querySelectorAll('.win-pulse, .dead-content').forEach(el => {
-        el.classList.remove('win-pulse', 'dead-content');
-    });
-
-    try {
-        const response = await fetch("https://game-server-vs0h.onrender.com/api/battle-action", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                userId: window.REAL_USER_ID,
-                playerDeck: battle_placedCards 
-            })
-        });
-        const resData = await response.json();
-        if (!resData.success) throw new Error(resData.message);
-        
-        const serverData = resData.data;
-        battle_eDeck = serverData.enemyDeck; 
-
-        // --- 2. สร้าง Timeline ---
-        const tl = gsap.timeline({
-            onComplete: () => {
-                battle_isPlaying = false;
-                // สรุปผลหลังแอนิเมชันจบทั้งหมด
-                checkBattleResultFromServer(serverData);
-            }
-        });
-
-        // วนลูปการปะทะ
-        for(let i=0; i<5; i++) { 
-            const eVal = battle_eDeck[i]; 
-            const pVal = battle_placedCards[i]; 
-            const eWrap = document.getElementById(`eWrap${i}`); 
-            const eBack = document.getElementById(`eCard${i}`); 
-            const pSlot = document.querySelector(`.clash-slot[data-id="${i}"]`);
-            const pCardDiv = pSlot.querySelector('div');
-
-            // ใส่เลขรอไว้ แต่จะเห็นตอนหมุน rotationY เท่านั้น
-            eBack.textContent = eVal; 
-
-            // จังหวะที่ 1: หงายไพ่ศัตรู
-            tl.to(eWrap, {
-                duration: 0.4,
-                rotationY: 180,
-                ease: "back.out(1.2)",
-                onStart: () => playSfx('place')
+        try {
+            // 🌟 ยิง API เอาไพ่เราไปดวลกับ Server
+            const response = await fetch("https://game-server-vs0h.onrender.com/api/battle-action", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userId: window.REAL_USER_ID,
+                    playerDeck: battle_placedCards // ส่งไพ่ฝั่งเราไป
+                })
             });
 
-            // จังหวะที่ 2: กระแทกกัน (Impact)
-            tl.to([eWrap, pSlot], {
-                duration: 0.1,
-                y: (index) => index === 0 ? 15 : -15, 
-                repeat: 1,
-                yoyo: true,
-                ease: "power2.inOut"
-            }, "-=0.1"); 
+            const resData = await response.json();
+            if (!resData.success) throw new Error(resData.message);
 
-            // จังหวะที่ 3: ตัดสินใจผลลัพธ์ (Visual Feedback)
-            tl.add(() => {
-                playSfx('click');
+            const serverData = resData.data;
+
+            // 🌟 เซิร์ฟเวอร์ส่งไพ่บอสกลับมาแล้ว เอามาใส่รอเลย
+            battle_eDeck = serverData.enemyDeck; 
+
+            // --- เริ่มเล่นแอนิเมชันพลิกไพ่ ---
+            let pSurvivors = []; let eSurvivors = []; 
+            
+            for(let i=0; i<5; i++) { 
+                const eVal = battle_eDeck[i]; 
+                const pVal = battle_placedCards[i]; 
+                const eWrap = document.getElementById(`eWrap${i}`); 
+                const eBack = document.getElementById(`eCard${i}`); 
+                eBack.textContent = eVal; 
+                eWrap.classList.add('flipped'); 
+                playSfx('place'); 
+                
+                await new Promise(r => setTimeout(r, 600)); 
+                
+                const pSlot = document.querySelector(`.clash-slot[data-id="${i}"]`); 
+                const pCard = pSlot.querySelector('div'); 
+                
                 if (pVal > eVal) { 
-                    gsap.to(eBack, { filter: "brightness(0.3) grayscale(1)", duration: 0.3 });
-                    pSlot.classList.add('win-pulse');
+                    eBack.classList.add('dead-content'); pCard.parentElement.classList.add('win-pulse'); pSurvivors.push({val: pVal}); 
                 } else if (eVal > pVal) { 
-                    gsap.to(pCardDiv, { filter: "brightness(0.3) grayscale(1)", duration: 0.3 });
-                    eBack.classList.add('win-pulse');
+                    pCard.classList.add('dead-content'); eBack.classList.add('win-pulse'); eSurvivors.push({val: eVal}); 
                 } else { 
-                    gsap.to([eBack, pCardDiv], { filter: "brightness(0.2)", duration: 0.3 });
-                }
-            });
-
-            // เว้นจังหวะสั้นๆ ก่อนใบถัดไป (ใช้ Position Parameter แทน tl.delay)
-            tl.to({}, { duration: 0.2 }); 
-        } 
-
-        // --- 3. จบการดวลไพ่ แสดง Damage รวม ---
-        tl.add(() => {
+                    eBack.classList.add('dead-content'); pCard.classList.add('dead-content'); 
+                } 
+                playSfx('click'); 
+                await new Promise(r => setTimeout(r, 400)); 
+            } 
+            
+            await new Promise(r => setTimeout(r, 500)); 
+            
+            // --- โชว์ดาเมจและการลดเลือด (เซิร์ฟเวอร์คิดมาให้แล้ว) ---
             battle_eHP = serverData.eHp; 
             playerCurrentHP = serverData.pHp;
 
-            if(serverData.pDmg > 0) flashDamageGSAP('e', serverData.pDmg); 
-            if(serverData.eDmg > 0) flashDamageGSAP('p', serverData.eDmg); 
+            // 📌 ดาเมจเรา (pDmg) ลอยฝั่งศัตรู (e) | ดาเมจศัตรู (eDmg) ลอยฝั่งเรา (p)
+            if(serverData.pDmg > 0) flashDamage('e', serverData.pDmg); 
+            if(serverData.eDmg > 0) flashDamage('p', serverData.eDmg); 
             
             updateBattleUI(); 
-        }, "+=0.3");
+            await new Promise(r => setTimeout(r, 1500)); 
+            
+            // 🌟 โยนข้อมูลให้ฟังก์ชันสรุปผลทำงานต่อ
+            checkBattleResultFromServer(serverData);
 
-    } catch (err) {
-        console.error(err);
-        gameAlert("SYNC ERROR", "❌ SERVER ERROR:<br>" + err.message);
-        btnAction.disabled = false;
-        btnAction.innerText = "RETRY ATTACK";
-        battle_isPlaying = false;
+        } catch (err) {
+            console.error(err);
+            gameAlert("SYNC ERROR", "❌ SERVER ERROR:<br>" + err.message);
+            btnAction.disabled = false;
+            btnAction.innerText = "RETRY ATTACK";
+            battle_isPlaying = false;
+        }
     }
-}
-
 
     function flashDamage(who, amount) { 
-    if(amount <= 0) return; 
-
-    const txt = document.getElementById(who === 'e' ? 'eDmgText' : 'pDmgText'); 
-    txt.textContent = "-" + amount; 
-
-    // สร้าง Timeline เฉพาะกิจสั้นๆ จะอ่านง่ายกว่า
-    const tl = gsap.timeline();
-
-    // 1. เซตจุดเริ่มต้น (ลดปีกกาไป 1 ชุด)
-    tl.set(txt, { y: 0, scale: 0.5, opacity: 0 });
-
-    // 2. สั่งเด้งขึ้นมา
-    tl.to(txt, { 
-        duration: 0.6, 
-        y: -40, 
-        scale: 1.5, 
-        opacity: 1, 
-        ease: "back.out" 
-    });
-
-    // 3. สั่งจางหายไป (ต่อท้ายได้เลย ไม่ต้องซ้อน onComplete)
-    tl.to(txt, { 
-        duration: 0.4, 
-        opacity: 0, 
-        delay: 0.4 
-    });
-    
-    playSfx('hit'); 
-}
-
-         document.getElementById('battleArea').classList.add('shaking'); 
+        if(amount <= 0) return; 
+        const txt = document.getElementById(who === 'e' ? 'eDmgText' : 'pDmgText'); 
+        txt.textContent = "-" + amount; 
+        txt.classList.add('show'); 
+        playSfx('hit'); 
+        document.getElementById('battleArea').classList.add('shaking'); 
         if(who === 'e') document.querySelector('.boss-banner').classList.add('hit'); 
         setTimeout(() => { 
             txt.classList.remove('show'); 
@@ -1499,5 +1445,3 @@ EARNING <span style="color:#ffd700; font-weight:bold;">${item.reward} COINS!</sp
     </script>
 </body>
 </html>
-
-  
