@@ -1,0 +1,138 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+// ----------------------------------------------------------------------------
+// 1. ส่วนของ Interface (เขียนเอง ไม่ง้อไฟล์นอก)
+// ----------------------------------------------------------------------------
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+}
+
+// ----------------------------------------------------------------------------
+// 2. ส่วนของ Ownable (ระบบเจ้าของ)
+// ----------------------------------------------------------------------------
+abstract contract Context {
+    function _msgSender() internal view virtual returns (address) {
+        return msg.sender;
+    }
+}
+
+abstract contract Ownable is Context {
+    address private _owner;
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    constructor() {
+        _transferOwnership(_msgSender());
+    }
+
+    function owner() public view virtual returns (address) {
+        return _owner;
+    }
+
+    modifier onlyOwner() {
+        require(owner() == _msgSender(), "Ownable: caller is not the owner");
+        _;
+    }
+
+    function transferOwnership(address newOwner) public virtual onlyOwner {
+        require(newOwner != address(0), "Ownable: new owner is the zero address");
+        _transferOwnership(newOwner);
+    }
+
+    function _transferOwnership(address newOwner) internal virtual {
+        address oldOwner = _owner;
+        _owner = newOwner;
+        emit OwnershipTransferred(oldOwner, newOwner);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// 3. ส่วนของ ECDSA Library (ระบบแกะลายเซ็น เขียนสดในนี้เลย)
+// ----------------------------------------------------------------------------
+library ECDSA {
+    // ฟังก์ชันแปลงข้อความให้เป็นรูปแบบ Ethereum Signed Message
+    function toEthSignedMessageHash(bytes32 hash) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash));
+    }
+
+    // ฟังก์ชันแกะลายเซ็นว่าใครเป็นคนเซ็น
+    function recover(bytes32 hash, bytes memory signature) internal pure returns (address) {
+        if (signature.length != 65) {
+            return (address(0));
+        }
+
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        // แยกส่วนประกอบของลายเซ็น
+        assembly {
+            r := mload(add(signature, 0x20))
+            s := mload(add(signature, 0x40))
+            v := byte(0, mload(add(signature, 0x60)))
+        }
+
+        // ตรวจสอบความถูกต้องของค่า s และ v (เพื่อความปลอดภัย)
+        if (uint256(s) > 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0) {
+            return (address(0));
+        }
+        if (v != 27 && v != 28) {
+            return (address(0));
+        }
+
+        // ใช้คำสั่ง ecrecover ของ Solidity
+        return ecrecover(hash, v, r, s);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// 4. ตัว Contract หลัก (GameVault)
+// ----------------------------------------------------------------------------
+contract GameVault is Ownable {
+    using ECDSA for bytes32;
+
+    IERC20 public wldToken;
+    address public signerWallet;
+    mapping(uint256 => bool) public usedNonces;
+
+    event Claimed(address indexed user, uint256 amount, uint256 nonce);
+
+    constructor(address _wldToken, address _signer) {
+        wldToken = IERC20(_wldToken);
+        signerWallet = _signer;
+    }
+
+    function setSigner(address _newSigner) external onlyOwner {
+        signerWallet = _newSigner;
+    }
+
+    function claimReward(uint256 amount, uint256 nonce, bytes memory signature) external {
+        require(!usedNonces[nonce], "Nonce already used");
+
+        // สร้าง Hash
+        bytes32 message = keccak256(abi.encodePacked(msg.sender, amount, nonce, address(this)));
+        
+        // ใช้ฟังก์ชันจาก Library ด้านบน
+        bytes32 ethSignedMessageHash = message.toEthSignedMessageHash();
+        address recoveredSigner = ethSignedMessageHash.recover(signature);
+
+        // ตรวจสอบลายเซ็น
+        require(recoveredSigner == signerWallet && recoveredSigner != address(0), "Invalid signature");
+
+        usedNonces[nonce] = true;
+        require(wldToken.transfer(msg.sender, amount), "Transfer failed");
+        emit Claimed(msg.sender, amount, nonce);
+    }
+
+    function emergencyWithdraw(address _tokenAddress) external onlyOwner {
+        IERC20 token = IERC20(_tokenAddress);
+        uint256 balance = token.balanceOf(address(this));
+        require(balance > 0, "No funds to withdraw");
+        token.transfer(owner(), balance);
+    }
+}
