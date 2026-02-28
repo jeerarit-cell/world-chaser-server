@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+}
+
+abstract contract Context {
+    function _msgSender() internal view virtual returns (address) {
+        return msg.sender;
+    }
+}
+
+abstract contract Ownable is Context {
+    address private _owner;
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    constructor() {
+        _transferOwnership(_msgSender());
+    }
+
+    function owner() public view virtual returns (address) {
+        return _owner;
+    }
+
+    modifier onlyOwner() {
+        require(owner() == _msgSender(), "Ownable: caller is not the owner");
+        _;
+    }
+
+    function _transferOwnership(address newOwner) internal virtual {
+        address oldOwner = _owner;
+        _owner = newOwner;
+        emit OwnershipTransferred(oldOwner, newOwner);
+    }
+}
+
+library ECDSA {
+    function toEthSignedMessageHash(bytes32 hash) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash));
+    }
+
+    function recover(bytes32 hash, bytes memory signature) internal pure returns (address) {
+        if (signature.length != 65) return (address(0));
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+        assembly {
+            r := mload(add(signature, 0x20))
+            s := mload(add(signature, 0x40))
+            v := byte(0, mload(add(signature, 0x60)))
+        }
+        if (uint256(s) > 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0) return (address(0));
+        if (v != 27 && v != 28) return (address(0));
+        return ecrecover(hash, v, r, s);
+    }
+}
+
+contract GameVaultV2 is Ownable {
+    using ECDSA for bytes32;
+
+    address public signerWallet;
+    mapping(uint256 => bool) public usedNonces;
+
+    event Claimed(address indexed user, address indexed token, uint256 amount, uint256 nonce);
+
+    constructor(address _signer) {
+        signerWallet = _signer;
+    }
+
+    function setSigner(address _newSigner) external onlyOwner {
+        signerWallet = _newSigner;
+    }
+
+    // ฟังก์ชันเคลมที่รองรับการระบุเหรียญ
+    function claimReward(address _token, uint256 _amount, uint256 _nonce, bytes memory _signature) external {
+        require(!usedNonces[_nonce], "Nonce already used");
+
+        // ลำดับการ Hash: ผู้รับ -> เหรียญ -> จำนวน -> Nonce -> สัญญาตัวนี้
+        bytes32 message = keccak256(abi.encodePacked(msg.sender, _token, _amount, _nonce, address(this)));
+        
+        bytes32 ethSignedMessageHash = message.toEthSignedMessageHash();
+        address recoveredSigner = ethSignedMessageHash.recover(_signature);
+
+        require(recoveredSigner == signerWallet && recoveredSigner != address(0), "Invalid signature");
+
+        usedNonces[_nonce] = true;
+        
+        // จ่ายเหรียญตามที่ระบุ (ต้องมีเหรียญในสัญญาด้วย)
+        require(IERC20(_token).transfer(msg.sender, _amount), "Transfer failed");
+        
+        emit Claimed(msg.sender, _token, _amount, _nonce);
+    }
+
+    function emergencyWithdraw(address _tokenAddress) external onlyOwner {
+        uint256 balance = IERC20(_tokenAddress).balanceOf(address(this));
+        require(balance > 0, "No funds");
+        IERC20(_tokenAddress).transfer(owner(), balance);
+    }
+}
